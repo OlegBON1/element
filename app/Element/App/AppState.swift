@@ -10,6 +10,7 @@ final class AppState: ObservableObject {
     @Published var inspectionEnabled: Bool = false
     @Published var selectedTemplateID: UUID?
     @Published var promptInstruction: String = ""
+    @Published var attachedImages: [ImageAttachment] = []
 
     let elementHistory = ElementHistory()
 
@@ -80,6 +81,22 @@ final class AppState: ObservableObject {
 
     func clearSelection() {
         selectedElement = nil
+        attachedImages = []
+    }
+
+    // MARK: - Image Attachments
+
+    func addImage(_ image: ImageAttachment) {
+        guard attachedImages.count < ImageAttachment.maxAttachments else { return }
+        attachedImages = attachedImages + [image]
+    }
+
+    func removeImage(id: UUID) {
+        attachedImages = attachedImages.filter { $0.id != id }
+    }
+
+    func clearAttachments() {
+        attachedImages = []
     }
 
     // MARK: - Bridge Status

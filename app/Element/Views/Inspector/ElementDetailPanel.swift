@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct ElementDetailPanel: View {
     @EnvironmentObject private var appState: AppState
@@ -195,14 +196,66 @@ private struct SelectedElementView: View {
         VStack(alignment: .leading, spacing: 6) {
             SectionHeader(title: "Instruction")
 
-            TextField(
-                "What should Claude Code do with this element?",
-                text: $appState.promptInstruction,
-                axis: .vertical
-            )
-            .lineLimit(2...4)
-            .textFieldStyle(.roundedBorder)
+            HStack(alignment: .top, spacing: 6) {
+                TextField(
+                    "What should Claude Code do with this element?",
+                    text: $appState.promptInstruction,
+                    axis: .vertical
+                )
+                .lineLimit(2...4)
+                .textFieldStyle(.roundedBorder)
+
+                Button {
+                    pickImages()
+                } label: {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 14))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Attach images (PNG, JPG, WebP, GIF)")
+                .disabled(appState.attachedImages.count >= ImageAttachment.maxAttachments)
+            }
+
+            if !appState.attachedImages.isEmpty {
+                attachmentThumbnailStrip
+            }
         }
+    }
+
+    private var attachmentThumbnailStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(appState.attachedImages) { attachment in
+                    attachmentThumbnail(attachment)
+                }
+            }
+        }
+    }
+
+    private func attachmentThumbnail(_ attachment: ImageAttachment) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Image(nsImage: attachment.thumbnail)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                )
+
+            Button {
+                appState.removeImage(id: attachment.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white, .red)
+            }
+            .buttonStyle(.plain)
+            .offset(x: 4, y: -4)
+        }
+        .help(attachment.fileName)
     }
 
     // MARK: - Claude Session Status
@@ -278,7 +331,7 @@ private struct SelectedElementView: View {
                     } else {
                         Image(systemName: "paperplane.fill")
                     }
-                    Text(claudeSession.isProcessing ? "Processing…" : "Send to Claude Code")
+                    Text(sendButtonLabel)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
@@ -311,6 +364,17 @@ private struct SelectedElementView: View {
         appState.canSendToClaudeCode
             && claudeSession.status.isReady
             && !claudeSession.isProcessing
+    }
+
+    private var sendButtonLabel: String {
+        if claudeSession.isProcessing {
+            return "Processing…"
+        }
+        let imageCount = appState.attachedImages.count
+        if imageCount > 0 {
+            return "Send to Claude Code (\(imageCount) image\(imageCount > 1 ? "s" : ""))"
+        }
+        return "Send to Claude Code"
     }
 
     // MARK: - Response
@@ -410,14 +474,52 @@ private struct SelectedElementView: View {
     private func sendToClaudeCode() {
         guard let prompt = appState.renderedPrompt else { return }
 
+        let images = appState.attachedImages
+
         Task {
             do {
-                let response = try await claudeSession.send(prompt: prompt)
+                let response = try await claudeSession.send(
+                    prompt: prompt,
+                    images: images
+                )
                 NSLog("[Element] Claude Code response: %d chars", response.count)
+                appState.clearAttachments()
                 showResult(success: true, message: "Sent to Claude Code")
             } catch {
                 NSLog("[Element] Send error: %@", error.localizedDescription)
                 showResult(success: false, message: error.localizedDescription)
+            }
+        }
+    }
+
+    private func pickImages() {
+        let panel = NSOpenPanel()
+        panel.title = "Attach Images"
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [
+            UTType.png,
+            UTType.jpeg,
+            UTType.webP,
+            UTType.gif
+        ]
+
+        let remainingSlots = ImageAttachment.maxAttachments - appState.attachedImages.count
+        guard remainingSlots > 0 else { return }
+
+        panel.begin { [appState] response in
+            guard response == .OK else { return }
+
+            let urls = Array(panel.urls.prefix(remainingSlots))
+            Task { @MainActor in
+                for url in urls {
+                    if let attachment = ImageAttachment.fromURL(url) {
+                        appState.addImage(attachment)
+                    } else {
+                        NSLog("[Element] Failed to load image: %@", url.lastPathComponent)
+                    }
+                }
             }
         }
     }

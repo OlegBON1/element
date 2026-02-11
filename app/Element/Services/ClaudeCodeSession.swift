@@ -233,11 +233,44 @@ final class ClaudeCodeSession: ObservableObject {
         }
     }
 
-    /// Send a prompt to the running Claude Code session.
-    func send(prompt: String) async throws -> String {
+    /// Send a prompt to the running Claude Code session, optionally with image attachments.
+    func send(prompt: String, images: [ImageAttachment] = []) async throws -> String {
         guard let stdinPipe = stdinPipe, process?.isRunning == true else {
             throw ClaudeSessionError.notRunning
         }
+
+        // Build and encode the message BEFORE entering the continuation
+        // to avoid double-resume if encoding fails while pendingCompletion is set.
+        let content: StreamContent
+        if images.isEmpty {
+            content = .text(prompt)
+        } else {
+            var blocks: [StreamContentBlock] = images.map { image in
+                .image(StreamImageBlock(
+                    source: StreamImageSource(
+                        mediaType: image.mediaType,
+                        data: image.base64Encoded
+                    )
+                ))
+            }
+            blocks.append(.text(StreamTextBlock(text: prompt)))
+            content = .blocks(blocks)
+        }
+
+        let message = StreamMessage(
+            type: "user",
+            message: StreamUserMessage(role: "user", content: content)
+        )
+
+        let jsonData: Data
+        do {
+            jsonData = try JSONEncoder().encode(message)
+        } catch {
+            throw ClaudeSessionError.encodingFailed
+        }
+
+        var payload = jsonData
+        payload.append(contentsOf: "\n".utf8)
 
         isProcessing = true
         status = .processing
@@ -249,25 +282,8 @@ final class ClaudeCodeSession: ObservableObject {
                 continuation.resume(with: result)
             }
 
-            let message = StreamMessage(
-                type: "user",
-                message: StreamUserMessage(role: "user", content: prompt)
-            )
-
-            do {
-                let jsonData = try JSONEncoder().encode(message)
-                var payload = jsonData
-                payload.append(contentsOf: "\n".utf8)
-
-                debugLog("[ClaudeSession] Sending \(payload.count) bytes to stdin")
-                stdinPipe.fileHandleForWriting.write(payload)
-            } catch {
-                isProcessing = false
-                let sid = sessionID ?? "pending"
-                status = .ready(sessionID: sid)
-                pendingCompletion = nil
-                continuation.resume(throwing: ClaudeSessionError.encodingFailed)
-            }
+            debugLog("[ClaudeSession] Sending \(payload.count) bytes to stdin (\(images.count) images)")
+            stdinPipe.fileHandleForWriting.write(payload)
         }
     }
 
@@ -406,5 +422,61 @@ private struct StreamMessage: Encodable {
 
 private struct StreamUserMessage: Encodable {
     let role: String
-    let content: String
+    let content: StreamContent
+}
+
+// MARK: - Multimodal Content Types
+
+/// Represents the `content` field: either a plain string or an array of content blocks.
+enum StreamContent: Encodable {
+    case text(String)
+    case blocks([StreamContentBlock])
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let string):
+            try container.encode(string)
+        case .blocks(let blocks):
+            try container.encode(blocks)
+        }
+    }
+}
+
+/// A single content block inside the `content` array.
+enum StreamContentBlock: Encodable {
+    case text(StreamTextBlock)
+    case image(StreamImageBlock)
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let block):
+            try container.encode(block)
+        case .image(let block):
+            try container.encode(block)
+        }
+    }
+}
+
+struct StreamTextBlock: Encodable {
+    let type: String = "text"
+    let text: String
+}
+
+struct StreamImageBlock: Encodable {
+    let type: String = "image"
+    let source: StreamImageSource
+}
+
+struct StreamImageSource: Encodable {
+    let type: String = "base64"
+    let mediaType: String
+    let data: String
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case mediaType = "media_type"
+        case data
+    }
 }
