@@ -1,0 +1,64 @@
+# Build artifacts
+.build/
+*.o
+*.d
+*.swp
+DerivedData/
+
+# macOS app bundles (built, not source)
+*.app
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcscmblueprint
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Node / SDK build
+sdk/node_modules/
+sdk/dist/
+node_modules/
+
+# Go bridge build
+bridge/bin/
+bin/
+
+# Debug logs
+*.log
+element-claude-debug.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Secrets
+*.pem
+*.key
+*.p12
+*.cer
+
+# Claude Code local settings
+.claude/
+
+# MCP server
+mcp/node_modules/
