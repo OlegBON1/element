@@ -25,9 +25,6 @@ struct ElementApp: App {
                 .onDisappear {
                     devServerManager.stopAll()
                 }
-                .task {
-                    await monitorBridgeStatus()
-                }
                 .onChange(of: appState.selectedProjectID) { _, _ in
                     startClaudeSessionIfNeeded()
                 }
@@ -117,26 +114,4 @@ struct ElementApp: App {
         claudeSession.start(projectPath: project.path)
     }
 
-    // MARK: - Bridge Status Monitor
-
-    private func monitorBridgeStatus() async {
-        let client = BridgeClient()
-
-        while !Task.isCancelled {
-            do {
-                let status = try await client.getStatus()
-                let bridgeStatus = BridgeStatus(
-                    connection: .connected,
-                    idle: status.idle,
-                    queueLength: status.queue_length,
-                    childAlive: status.child_alive
-                )
-                appState.updateBridgeStatus(bridgeStatus)
-            } catch {
-                appState.setBridgeConnection(.disconnected)
-            }
-
-            try? await Task.sleep(for: .seconds(3))
-        }
-    }
 }

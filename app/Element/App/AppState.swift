@@ -6,7 +6,6 @@ final class AppState: ObservableObject {
     @Published private(set) var projects: [ProjectConfig] = []
     @Published var selectedProjectID: UUID?
     @Published private(set) var selectedElement: ElementInfo?
-    @Published private(set) var bridgeStatus: BridgeStatus = .disconnected
     @Published var inspectionEnabled: Bool = false
     @Published var selectedTemplateID: UUID?
     @Published var promptInstruction: String = ""
@@ -45,10 +44,6 @@ final class AppState: ObservableObject {
 
     var canSendToClaudeCode: Bool {
         selectedElement != nil
-    }
-
-    var isBridgeReady: Bool {
-        bridgeStatus.connection.isConnected && bridgeStatus.childAlive
     }
 
     // MARK: - Project Management
@@ -97,16 +92,6 @@ final class AppState: ObservableObject {
 
     func clearAttachments() {
         attachedImages = []
-    }
-
-    // MARK: - Bridge Status
-
-    func updateBridgeStatus(_ status: BridgeStatus) {
-        bridgeStatus = status
-    }
-
-    func setBridgeConnection(_ state: BridgeConnectionState) {
-        bridgeStatus = bridgeStatus.withConnection(state)
     }
 
     // MARK: - Persistence

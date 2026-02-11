@@ -2,6 +2,8 @@ import SwiftUI
 
 struct MainView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var claudeSession: ClaudeCodeSession
+    @EnvironmentObject private var devServerManager: DevServerManager
 
     var body: some View {
         NavigationSplitView {
@@ -14,6 +16,7 @@ struct MainView: View {
                 EmptyProjectView()
             }
         }
+        .toolbar(removing: .sidebarToggle)
         .navigationTitle("")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -24,7 +27,16 @@ struct MainView: View {
 
     @ViewBuilder
     private var toolbarContent: some View {
-        BridgeStatusIndicator(status: appState.bridgeStatus)
+        ClaudeSessionStatusIndicator(status: claudeSession.status)
+
+        if let project = appState.selectedProject,
+           project.platform == .web {
+            DevServerToolbarButton(
+                isRunning: devServerManager.isRunning(projectID: project.id),
+                onStart: { devServerManager.start(project: project) },
+                onStop: { devServerManager.stop(projectID: project.id) }
+            )
+        }
 
         Button {
             appState.inspectionEnabled.toggle()
@@ -79,10 +91,34 @@ private struct EmptyProjectView: View {
     }
 }
 
-// MARK: - Bridge Status Indicator
+// MARK: - Dev Server Toolbar Button
 
-struct BridgeStatusIndicator: View {
-    let status: BridgeStatus
+struct DevServerToolbarButton: View {
+    let isRunning: Bool
+    let onStart: () -> Void
+    let onStop: () -> Void
+
+    var body: some View {
+        Button {
+            if isRunning {
+                onStop()
+            } else {
+                onStart()
+            }
+        } label: {
+            Label(
+                isRunning ? "Stop Dev Server" : "Start Dev Server",
+                systemImage: isRunning ? "stop.fill" : "play.fill"
+            )
+        }
+        .help(isRunning ? "Stop the dev server" : "Start the dev server")
+    }
+}
+
+// MARK: - Claude Session Status Indicator
+
+struct ClaudeSessionStatusIndicator: View {
+    let status: ClaudeCodeSession.Status
 
     var body: some View {
         HStack(spacing: 6) {
@@ -90,29 +126,35 @@ struct BridgeStatusIndicator: View {
                 .fill(statusColor)
                 .frame(width: 8, height: 8)
 
-            Text(status.connection.displayText)
+            Text(displayText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .help(statusTooltip)
+        .help(status.displayText)
+    }
+
+    private var displayText: String {
+        switch status {
+        case .idle:
+            return "Idle"
+        case .starting:
+            return "Starting..."
+        case .ready:
+            return "Ready"
+        case .processing:
+            return "Processing..."
+        case .error:
+            return "Error"
+        }
     }
 
     private var statusColor: Color {
-        switch status.connection {
-        case .disconnected: return .gray
-        case .connecting: return .yellow
-        case .connected: return status.childAlive ? .green : .orange
+        switch status {
+        case .idle: return .gray
+        case .starting: return .yellow
+        case .ready: return .green
+        case .processing: return .blue
         case .error: return .red
         }
-    }
-
-    private var statusTooltip: String {
-        var parts = [status.connection.displayText]
-        if status.connection.isConnected {
-            parts.append("Queue: \(status.queueLength)")
-            parts.append(status.childAlive ? "Claude Code: Running" : "Claude Code: Stopped")
-            parts.append(status.idle ? "Idle" : "Busy")
-        }
-        return parts.joined(separator: " | ")
     }
 }
