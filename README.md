@@ -28,9 +28,10 @@ Element.app (SwiftUI)
   |-- ScreenCaptureKit ...... iOS Simulator mirror
   |-- Metro WebSocket ....... React Native connection
   |
+  |-- Dev Server Manager .... Start/stop dev servers per project
   |-- Element API Server .... localhost:7749 (for MCP)
   |-- Claude Code Session ... Direct subprocess via stream-json
-  |
+  |                           (supports text + image attachments)
   v
 MCP Server (optional) ....... Claude Code integration via MCP protocol
 ```
@@ -51,7 +52,7 @@ MCP Server (optional) ....... Claude Code integration via MCP protocol
 | **Xcode Command Line Tools** | Swift 5.9+ | Building the native app |
 | **Node.js** | 18+ | Building the JS SDK and MCP server |
 | **Claude Code** | Latest | AI coding assistant (`~/.local/bin/claude`) |
-| **Go** | 1.21+ | Go bridge only (optional) |
+| **Go** | 1.21+ | Go bridge only (optional, not required for normal usage) |
 
 ### Step 1: Clone the Repository
 
@@ -168,30 +169,37 @@ go build -o bin/element-bridge ./cmd/element-bridge
 ### Sending to Claude Code
 
 1. After selecting an element, write your instruction in the text field (e.g., "make this button blue")
-2. Click **Send to Claude Code** or press **⌘Enter**
-3. Element sends a structured prompt with the file path, code snippet, and your instruction directly to Claude Code
+2. Optionally attach images using the **📎 paperclip** button (screenshots, design references)
+3. Click **Send to Claude Code** or press **⌘Enter**
+4. Element sends a structured prompt with the file path, code snippet, images, and your instruction directly to Claude Code
 
-### Bridge Status Indicator
+### Claude Session Status
 
-The toolbar shows a colored dot indicating the bridge connection state:
+The toolbar shows a colored dot indicating the Claude Code session state:
 
 | Color | Meaning |
 |-------|---------|
-| 🟢 Green | Connected, Claude Code running |
-| 🟡 Yellow | Connecting... |
-| 🟠 Orange | Connected, but Claude Code not running |
-| 🔴 Red | Connection error |
-| ⚪ Gray | Disconnected |
+| 🟢 Green | Ready — session connected |
+| 🔵 Blue | Processing — Claude Code is working |
+| 🟡 Yellow | Starting — session initializing |
+| 🔴 Red | Error — session failed |
+| ⚪ Gray | Idle — no active session |
 
-Hover over the indicator for details including queue length and idle/busy state.
+### Dev Server Controls
+
+For **web projects**, the toolbar shows a play/stop button to start or stop the dev server directly from Element. Element infers the correct command based on the preview URL port (e.g., `npm run dev` for port 3000/5173).
+
+### Image Attachments
+
+You can attach images (PNG, JPG, WebP, GIF) alongside your text instructions. Click the paperclip icon in the instruction panel to add screenshots or design references. Images are sent as base64-encoded content to Claude Code for multimodal context. Max 5 images, 5MB each.
 
 ### Platform-Specific Setup
 
 #### Web (React, Next.js, Vue)
 
-1. Start your dev server (`npm run dev`, `next dev`, etc.)
-2. Add the project with the **Web** platform type
-3. Set the **Preview URL** to your localhost address (e.g., `http://localhost:3000`)
+1. Add the project with the **Web** platform type
+2. Set the **Preview URL** to your localhost address (e.g., `http://localhost:3000`)
+3. Start your dev server using the **▶ play button** in the toolbar, or manually (`npm run dev`, `next dev`, etc.)
 4. Element loads your app in an embedded browser and injects the inspector SDK
 
 **Important:** Your app must run in **development mode**. Production builds strip `_debugSource` metadata which Element uses to find source locations.
@@ -231,7 +239,6 @@ Open **Settings** from the menu bar (**Element > Settings** or **⌘,**).
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Auto-start bridge on launch | On | Automatically start the Go bridge when Element opens |
 | Enable inspection on project open | Off | Automatically enable the inspector when selecting a project |
 | Show element selection notifications | On | Show a notification when an element is selected |
 
@@ -259,18 +266,6 @@ Element automatically selects the best template based on the available element d
 | `{{tagName}}` | HTML tag or view type |
 | `{{textContent}}` | Text content of the element |
 | `{{instruction}}` | Your instruction text |
-
-### Bridge
-
-The bridge settings control the connection to the Go PTY bridge:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Host | `127.0.0.1` | Bridge server host address |
-| Port | `9999` | Bridge server port |
-| Paranoid mode | Off | When enabled, prompts are typed into Claude Code but **not submitted**. You must press Enter manually. |
-
-> **Paranoid mode** is useful when you want to review the exact prompt before Claude Code processes it.
 
 ---
 
@@ -329,10 +324,10 @@ element/
 │   ├── Element.entitlements      # App sandbox disabled (for AX API)
 │   └── Element/
 │       ├── App/                  # App entry point, global state
-│       ├── Models/               # ElementInfo, ProjectConfig, PromptTemplate
+│       ├── Models/               # ElementInfo, ProjectConfig, ImageAttachment
 │       ├── Services/             # Core services
 │       │   ├── ClaudeCodeSession # Direct Claude Code subprocess
-│       │   ├── BridgeClient      # HTTP client for Go bridge
+│       │   ├── DevServerManager  # Dev server process management
 │       │   ├── ElementAPIServer  # Local HTTP API for MCP
 │       │   ├── Web/              # WKWebView + JS SDK injection
 │       │   ├── ReactNative/      # Metro WebSocket + RN inspector
